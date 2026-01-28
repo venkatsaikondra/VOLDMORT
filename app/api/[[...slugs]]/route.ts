@@ -1,6 +1,11 @@
 import { Elysia, t } from 'elysia'
 import { nanoid } from 'nanoid';
 import { redis } from '@/lib/redis';
+import { authMiddleWare } from './auth';
+import { ZAddCommand } from '@upstash/redis';
+import z from 'zod';
+import { error, timeStamp } from 'console';
+import { realtime } from '@/lib/realtime';
 const ROOM_TTL_SECONDS=60*10
 const rooms=new Elysia({prefix:"/room"}).post("/create",async ()=>{
     const roomId=nanoid();
@@ -10,6 +15,31 @@ const rooms=new Elysia({prefix:"/room"}).post("/create",async ()=>{
     })
     await redis.expire(`meta:${roomId}`,ROOM_TTL_SECONDS)
     return {roomId}
+})
+const messages=new Elysia({prefix:"/messages"}).use(authMiddleWare).post("/",({body,auth})=>{
+    const {sender,text}=body
+    const {roomId}=auth
+    const roomExists=await redis.exists(`meta:${roomId}`)
+    if(!roomExists){
+        throw new Error("room does not exist")
+    }
+    const message:Message={
+        id:nanoid(),
+        sender,
+        text,timeStamp:Date.now(),
+        roomId,
+    }
+    await redis.rpush(`messages:${roomId}`,{...message,token:auth.token})
+    await realtime.channel(roomId).emit("chat.message",message)
+    const remaining=await redis.ttl(`meta:${roomId}`)
+    await redis.expire(`messages:${roomId}`,remaining)
+     await redis.expire(`history:${roomId}`,remaining)
+     await redis.expire(roomId,remaining)
+},{
+    body:z.object({
+        sender:z.string().max(100),
+        text:z.string().max(1000),
+    })
 })
 const app = new Elysia({ prefix: '/api' }).use(rooms)
     .get('/', 'Hello Nextjs')

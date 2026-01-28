@@ -1,6 +1,7 @@
 "use client"
 import React, { useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useMutation } from '@tanstack/react-query'
 const formatTimeRemaining=(seconds:number)=>({
     const mins=Math.floor(seconds/60)
     const secs=seconds%60
@@ -15,6 +16,7 @@ const page = () => {
     const [copyStatus,setCopyStatus]=useState("COPY")
     const [timeRemaining,setTimeRemaining]=useState<number | null>(null)
 
+    const {}=useMutation()
     const copyLink=()=>{
         const url=window.location.href
         navigator.clipboard.writeText(url)
