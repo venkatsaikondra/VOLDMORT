@@ -5,37 +5,58 @@ import { nanoid } from 'nanoid'
 export async function proxy(req: NextRequest) {
     const pathName = req.nextUrl.pathname
     const roomMatch = pathName.match(/^\/room\/([^/]+)$/)
-    if (!roomMatch) return NextResponse.redirect(new URL('/', req.url))
+    
+    if (!roomMatch) return NextResponse.next()
 
     const roomId = roomMatch[1]
-        // The upstash redis.hget signature is (key, field). Use that to fetch required fields.
-        const connected = await redis.hget<string[]>(`meta:${roomId}`, 'connected')
-        const createdAt = await redis.hget<number>(`meta:${roomId}`, 'createdAt')
+    
+    // FIX: Cast the result instead of using a generic on the function call
+    const meta = await redis.hgetall(`meta:${roomId}`) as { connected?: string | string[], createdAt?: number } | null
 
-        if (!connected) {
-            return NextResponse.redirect(new URL('/?error=room-not-found', req.url))
-        }
+    // Check if meta is null or an empty object
+    if (!meta || Object.keys(meta).length === 0) {
+        return NextResponse.redirect(new URL('/?error=room-not-found', req.url))
+    }
 
     const existingToken = req.cookies.get('x-auth-token')?.value
-    if (existingToken && connected.includes(existingToken)) {
+
+    let normalizedConnected: string[] = []
+    
+    // Robust parsing for Redis 'connected' field
+    if (Array.isArray(meta.connected)) {
+        normalizedConnected = meta.connected
+    } else if (typeof meta.connected === 'string') {
+        try { 
+            normalizedConnected = JSON.parse(meta.connected) 
+        } catch { 
+            normalizedConnected = [] 
+        }
+    }
+
+    if (existingToken && normalizedConnected.includes(existingToken)) {
         return NextResponse.next()
     }
-    if (connected.length >= 2) {
+
+    if (normalizedConnected.length >= 2) {
         return NextResponse.redirect(new URL('/?error=room-full', req.url))
     }
 
-    const response = NextResponse.next()
     const token = nanoid()
+    const updatedConnected = [...normalizedConnected, token]
+    
+    await redis.hset(`meta:${roomId}`, {
+        connected: JSON.stringify(updatedConnected),
+        createdAt: meta.createdAt ?? Date.now(),
+    })
+
+    const response = NextResponse.next()
     response.cookies.set('x-auth-token', token, {
         path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
     })
-        await redis.hset(`meta:${roomId}`, {
-            connected: [...connected, token],
-            createdAt: createdAt ?? Date.now(),
-        })
+
     return response
 }
 

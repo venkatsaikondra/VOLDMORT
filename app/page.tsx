@@ -4,7 +4,6 @@ import { useMutation } from "@tanstack/react-query";
 import { client } from "@/lib/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUsername } from "@/hooks/use-username";
-import Cookies from 'js-cookie'
 import { nanoid } from "nanoid";
 
 export default function Home() {
@@ -19,9 +18,13 @@ export default function Home() {
   // CREATE ROOM MUTATION
   const { mutate: createRoom, isPending: isCreating } = useMutation({
     mutationFn: async () => {
-      const res = await client.api.room.create.post()
-      if (res.data && 'roomId' in res.data) {
-        router.push(`/room/${res.data.roomId}`)
+      try {
+        const res = await client.room.create()
+        if (res.data && 'roomId' in res.data) {
+          router.push(`/room/${res.data.roomId}`)
+        }
+      } catch (err) {
+        alert('Failed to create room')
       }
     }
   })
@@ -29,11 +32,15 @@ export default function Home() {
   // JOIN ROOM MUTATION
   const { mutate: joinRoom, isPending: isJoining } = useMutation({
     mutationFn: async () => {
-      const res = await client.api.room.join.post({ code: joinCode })
-      if (res.data && 'roomId' in res.data) {
-        router.push(`/room/${res.data.roomId}`)
-      } else {
-        alert("Invalid or Expired Code")
+      try {
+        const res = await client.room.join(joinCode)
+        if (res.data && 'roomId' in res.data) {
+          router.push(`/room/${res.data.roomId}`)
+        } else {
+          alert("Invalid or Expired Code")
+        }
+      } catch (err) {
+        alert('Failed to join room')
       }
     }
   })

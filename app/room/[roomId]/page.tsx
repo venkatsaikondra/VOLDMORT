@@ -26,9 +26,7 @@ const Page = () => {
     const { data: ttlData } = useQuery({
         queryKey: ["ttl", roomId],
         queryFn: async () => {
-            const res = await client.api.room.ttl.get({
-                $query: { roomId } // Elysia client syntax
-            })
+            const res = await client.room.ttl(roomId)
             return res.data
         },
         refetchInterval: 10000 // Refresh from server every 10s as backup
@@ -53,20 +51,26 @@ const Page = () => {
     const { data: messages, refetch } = useQuery({
         queryKey: ["messages", roomId],
         queryFn: async () => {
-            const res = await client.api.messages.get({
-                $query: { roomId }
-            })
+            const res = await client.messages.get(roomId)
             return res.data
         },
     })
 
     const { mutate: sendMessage, isPending } = useMutation({
         mutationFn: async (text: string) => {
-            await client.api.messages.post({ sender: username, text }, { $query: { roomId } })
+            try {
+                await client.messages.post(roomId, { sender: username, text })
+            } catch (err: any) {
+                console.error('sendMessage error', err)
+                throw err
+            }
         },
         onSuccess: () => {
             setInput("")
             refetch()
+        },
+        onError: (err: any) => {
+            alert('Failed to send message')
         }
     })
 
@@ -80,8 +84,16 @@ const Page = () => {
 
     const { mutate: destroyRoom } = useMutation({
         mutationFn: async () => {
-            await client.api.room.delete(null, { $query: { roomId } })
-        }
+            try {
+                await client.room.delete(roomId)
+            } catch (err) {
+                throw err
+            }
+        },
+        onSuccess: () => {
+            router.push('/?destroyed=true')
+        },
+        onError: () => alert('Failed to delete room')
     })
 
     const copyLink = () => {
@@ -126,7 +138,7 @@ const Page = () => {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900">
-                {!messages || messages.messages.length === 0 ? (
+                {!messages || !messages.messages || messages.messages.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                         <p className="text-center text-zinc-500 text-sm sm:text-base">No messages yet... Start the conversation! 💬</p>
                     </div>

@@ -18,14 +18,32 @@ export const authMiddleWare = new Elysia({ name: "auth" })
     })
     .derive({ as: 'scoped' }, async (ctx: any) => {
         try {
-            const { query, headers } = ctx
+            // Defensive extraction: ctx shape can vary; log keys for debugging
+            console.log('[auth] ctx keys', Object.keys(ctx || {}))
+            const query = ctx.query ?? (ctx.request && ctx.request.query) ?? null
+            const headers = ctx.headers ?? (ctx.request && ctx.request.headers) ?? {}
             
-            // Extract token from cookie header
-            const cookieHeader = headers.get('cookie') || ''
-            const tokenMatch = cookieHeader.match(/x-auth-token=([^;]+)/)
-            const token = tokenMatch ? tokenMatch[1] : null
+            // Extract token from multiple sources: header, cookie, query (makes local testing easier)
+            const cookieHeader = headers && (typeof headers.get === 'function' ? headers.get('cookie') : headers['cookie']) || ''
+            const cookieMatch = cookieHeader ? String(cookieHeader).match(/x-auth-token=([^;]+)/) : null
+            const headerTokenRaw = headers && (typeof headers.get === 'function' ? (headers.get('x-auth-token') || headers.get('authorization')) : (headers['x-auth-token'] || headers['authorization'])) || null
+            const headerToken = headerTokenRaw ? String(headerTokenRaw).replace(/^Bearer\s+/i, '') : null
+            const cookieToken = cookieMatch ? cookieMatch[1] : null
+            const queryToken = (query && (query.token as string)) || null
 
-            const roomId = (query?.roomId as string | undefined) || null
+            const token = headerToken || cookieToken || queryToken
+
+            let roomId = (query?.roomId as string | undefined) || null
+            // If roomId not found, try parsing from request url
+            if (!roomId && ctx.request && ctx.request.url) {
+                try {
+                    const u = new URL(ctx.request.url)
+                    roomId = u.searchParams.get('roomId')
+                } catch {}
+            }
+
+            // debug logging to help trace auth failures
+            console.log('[auth] debug', { roomId, token, cookieHeader })
 
             if (!roomId || !token) {
                 throw new AuthError('Missing roomId or token.')
@@ -36,6 +54,7 @@ export const authMiddleWare = new Elysia({ name: "auth" })
             
             // Handle if redis returns null
             if (!connected) {
+                console.log('[auth] no connected field for', roomId)
                 throw new AuthError('Room not found or expired.')
             }
             
@@ -50,6 +69,7 @@ export const authMiddleWare = new Elysia({ name: "auth" })
 
             // Check if user is in connected list
             if (!Array.isArray(connected) || !connected.includes(token)) {
+                console.log('[auth] token not in connected list', { roomId, token, connected })
                 throw new AuthError('Unauthorized: You are not a member of this room.')
             }
 
@@ -60,8 +80,9 @@ export const authMiddleWare = new Elysia({ name: "auth" })
                     connected,
                 },
             }
-        } catch (e) {
+        } catch (e: any) {
+            console.error('[auth] error', e)
             if (e instanceof AuthError) throw e
-            throw new AuthError('Authentication failed.')
+            throw new AuthError('Authentication failed: ' + (e?.message || String(e)))
         }
     })
