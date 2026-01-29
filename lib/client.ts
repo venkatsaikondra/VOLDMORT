@@ -1,9 +1,9 @@
 import { treaty } from '@elysiajs/eden'
-import { App } from '../app/api/[[...slugs]]/route'
+import type { App } from '@/app/api/[[...slugs]]/route' // Use 'import type'
 
-// .api to enter /api prefix
-export const client =
-  // process is defined on server side and build time
-  typeof process !== 'undefined'
-    ? treaty(App).api
-    : treaty<typeof App>('localhost:3000').api
+// Assuming your Next.js server runs on localhost:3000
+const url = typeof window !== 'undefined' 
+    ? window.location.origin 
+    : 'http://localhost:3000'
+
+export const client = treaty<App>(url)

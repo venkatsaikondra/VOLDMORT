@@ -1,7 +1,12 @@
 import { InferRealtimeEvents,Realtime } from "@upstash/realtime"
 import { timeStamp } from "console"
 import z, { string } from "zod"
-import { redis } from "@upstash/redis"
+// Change this:
+// import { redis } from "@upstash/redis" 
+
+// To this (import the Class, then use your existing redis instance):
+import { Redis } from "@upstash/redis"
+import { redis } from "@/lib/redis" // Import your actual configured instance instead
 const message=z.object({
             id:z.string(),
             sender:z.string(),
