@@ -92,62 +92,91 @@ const Page = () => {
 
     return (
         <main className="flex flex-col h-screen max-h-screen bg-black text-white">
-            <header className="border-b border-zinc-800 p-4 flex items-center justify-between bg-zinc-900/30">
-                <div className="flex items-center gap-4">
+            {/* Header */}
+            <header className="border-b border-zinc-800 p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-zinc-900/30 shrink-0">
+                <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                     <div className="flex flex-col">
-                        <span className="text-xs text-zinc-500 uppercase">Room ID</span>
+                        <span className="text-xs text-zinc-500 uppercase tracking-wide">Room</span>
                         <div className="flex items-center gap-2">
-                            <span className="font-bold text-violet-500">{roomId}</span>
-                            <button onClick={copyLink} className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400">
+                            <span className="font-bold text-violet-500 text-sm sm:text-base break-all">{roomId.slice(0, 12)}...</span>
+                            <button 
+                                onClick={copyLink} 
+                                className="text-xs bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors shrink-0"
+                            >
                                 {copyStatus}
                             </button>
                         </div>
                     </div>
+                    <div className="hidden sm:flex h-8 w-px bg-zinc-800" />
                     <div className="flex flex-col">
-                        <span className="text-xs text-zinc-500 uppercase">Self-Destruct</span>
-                        <span className={timeRemaining !== null && timeRemaining < 60 ? 'text-red-500' : 'text-amber-500'}>
+                        <span className="text-xs text-zinc-500 uppercase tracking-wide">Expires In</span>
+                        <span className={`text-sm sm:text-base font-bold ${timeRemaining !== null && timeRemaining < 60 ? 'text-red-500 animate-pulse' : 'text-amber-500'}`}>
                             {timeRemaining !== null ? formatTimeRemaining(timeRemaining) : '--:--'}
                         </span>
                     </div>
                 </div>
-                <button onClick={() => destroyRoom()} className="text-xs bg-zinc-800 hover:bg-red-800 px-3 py-1.5 rounded uppercase font-bold transition-all">
-                    Avada Kedavra 💣
+                <button 
+                    onClick={() => destroyRoom()} 
+                    className="text-xs sm:text-sm bg-zinc-800 hover:bg-red-800 active:bg-red-900 px-3 py-1.5 rounded uppercase font-bold transition-all flex items-center gap-1 whitespace-nowrap shrink-0"
+                >
+                    <span>💣</span>
+                    <span className="hidden sm:inline">Destroy</span>
                 </button>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages?.messages.length === 0 ? (
-                    <p className="text-center text-zinc-600 mt-20">No messages yet...</p>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900">
+                {!messages || messages.messages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                        <p className="text-center text-zinc-500 text-sm sm:text-base">No messages yet... Start the conversation! 💬</p>
+                    </div>
                 ) : (
-                    messages?.messages.map((msg: any) => (
-                        <div key={msg.id} className="flex flex-col">
+                    messages.messages.map((msg: any) => (
+                        <div 
+                            key={msg.id} 
+                            className={`flex flex-col gap-1 p-2 sm:p-3 rounded-lg ${msg.sender === username ? 'bg-violet-900/20 border border-violet-800/30' : 'bg-blue-900/20 border border-blue-800/30'}`}
+                        >
                             <div className="flex items-baseline gap-2">
-                                <span className={`text-xs font-bold ${msg.sender === username ? "text-violet-500" : "text-blue-400"}`}>
+                                <span className={`text-xs sm:text-sm font-bold ${msg.sender === username ? "text-violet-400" : "text-blue-400"}`}>
                                     {msg.sender === username ? "YOU" : msg.sender}
                                 </span>
-                                <span className="text-[10px] text-zinc-600">{format(msg.timestamp, "HH:mm")}</span>
+                                <span className="text-xs text-zinc-500">{format(new Date(msg.timestamp), "HH:mm")}</span>
                             </div>
-                            <p className="text-sm text-zinc-300">{msg.text}</p>
+                            <p className="text-sm sm:text-base text-zinc-200 whitespace-pre-wrap">{msg.text}</p>
                         </div>
                     ))
                 )}
             </div>
 
-            <div className="p-4 border-t border-zinc-800">
+            {/* Input */}
+            <div className="p-3 sm:p-4 border-t border-zinc-800 bg-black shrink-0">
                 <div className="flex gap-2">
                     <input
+                        ref={inputRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
-                        className="flex-1 bg-zinc-950 border border-zinc-800 p-3 text-sm outline-none focus:border-violet-500"
-                        placeholder="Type a message..."
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey && input.trim()) {
+                                sendMessage(input)
+                                setInput('')
+                                e.preventDefault()
+                            }
+                        }}
+                        className="flex-1 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-violet-500 focus:outline-none transition-colors text-zinc-100 placeholder:text-zinc-600 py-2 sm:py-3 px-3 sm:px-4 text-sm sm:text-base rounded"
+                        placeholder="Type a message... (Enter to send)"
+                        disabled={isPending}
                     />
                     <button 
-                        onClick={() => sendMessage(input)} 
+                        onClick={() => {
+                            if (input.trim()) {
+                                sendMessage(input)
+                                setInput('')
+                            }
+                        }} 
                         disabled={!input.trim() || isPending}
-                        className="bg-violet-600 px-6 text-sm font-bold disabled:opacity-50"
+                        className="bg-violet-600 hover:bg-violet-500 active:bg-violet-700 disabled:bg-zinc-700 disabled:cursor-not-allowed px-4 sm:px-6 py-2 sm:py-3 text-sm sm:text-base font-bold text-white rounded transition-colors shrink-0"
                     >
-                        SEND
+                        {isPending ? '...' : 'Send'}
                     </button>
                 </div>
             </div>

@@ -16,29 +16,52 @@ export const authMiddleWare = new Elysia({ name: "auth" })
             return { error: error.message }
         }
     })
-    .derive({ as: "scoped" }, async ({ query, cookie: { auth_token } }) => {
-        // query is passed from the main route, ensure it contains roomId
-        const roomId = query.roomId as string | undefined;
-        const token = auth_token.value;
+    .derive({ as: 'scoped' }, async (ctx: any) => {
+        try {
+            const { query, headers } = ctx
+            
+            // Extract token from cookie header
+            const cookieHeader = headers.get('cookie') || ''
+            const tokenMatch = cookieHeader.match(/x-auth-token=([^;]+)/)
+            const token = tokenMatch ? tokenMatch[1] : null
 
-        if (!roomId || !token) {
-            throw new AuthError("Missing roomId or token.")
-        }
+            const roomId = (query?.roomId as string | undefined) || null
 
-        // Fixed key format: `meta:${roomId}` to match your route.ts
-        // Using hget to get the 'connected' field
-        const connected = await redis.hget<string[]>(`meta:${roomId}`, "connected")
-
-        // If the room doesn't exist or the user isn't in the 'connected' array
-        if (!connected || !connected.includes(token)) {
-            throw new AuthError("Unauthorized: You are not a member of this room.")
-        }
-
-        return {
-            auth: {
-                roomId,
-                token,
-                connected
+            if (!roomId || !token) {
+                throw new AuthError('Missing roomId or token.')
             }
+
+            // Using hget to get the 'connected' field
+            let connected: any = await redis.hget(`meta:${roomId}`, 'connected')
+            
+            // Handle if redis returns null
+            if (!connected) {
+                throw new AuthError('Room not found or expired.')
+            }
+            
+            // Ensure connected is an array
+            if (typeof connected === 'string') {
+                try {
+                    connected = JSON.parse(connected)
+                } catch {
+                    throw new AuthError('Invalid room data.')
+                }
+            }
+
+            // Check if user is in connected list
+            if (!Array.isArray(connected) || !connected.includes(token)) {
+                throw new AuthError('Unauthorized: You are not a member of this room.')
+            }
+
+            return {
+                auth: {
+                    roomId,
+                    token,
+                    connected,
+                },
+            }
+        } catch (e) {
+            if (e instanceof AuthError) throw e
+            throw new AuthError('Authentication failed.')
         }
     })
