@@ -5,25 +5,14 @@ import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { client } from "@/lib/client";
 import { useRouter } from "next/router";
+import { useusername } from "@/hooks/use-username";
+import { text } from "stream/consumers";
 const NAMES=["Harry Potter","Hermonie","Snape","Malfoy","Dumbledore"]
-const STORAGE_KEY="chat_username"
-const generateUsername=()=>{
-   const word=NAMES[Math.floor(Math.random()*NAMES.length)] 
-   return `anonymous-${word}-${nanoid(5)}`
-}
+
 export default function Home() {
-  const [username,setUsername]=useState("");
+  const {username}=useusername()
   const router=useRouter()
-  useEffect(()=>{
-     const main=()=>{
-      const stored=localStorage.getItem(STORAGE_KEY)
-     }
-     if(stored){
-      setUsername(stored)
-      return
-     }
-     main()
-  },[])
+  
   const {mutate:createRoom}=useMutation({
     mutationFn:async()=>{
       const res=await client.room.create.post()
@@ -48,7 +37,7 @@ export default function Home() {
           </div>
         </div>
         </div>
-        <button onClick={()=>createRoom()} className="w-full bg-zinc-100 text-black p-3 text-sm font-bold hover:bg-zinc-50 hover:text-black transition-colors mt-2 cursor-pointer disabled:opacity-50">CREATE SECURE ROOM</button>
+        <button onClick={()=>{sendMessage({input:text})}} className="w-full bg-zinc-100 text-black p-3 text-sm font-bold hover:bg-zinc-50 hover:text-black transition-colors mt-2 cursor-pointer disabled:opacity-50">CREATE SECURE ROOM</button>
       </div>
       </div>
     </div>
