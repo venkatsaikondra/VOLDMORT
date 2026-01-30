@@ -75,15 +75,15 @@ const Page = () => {
     })
 
 // Inside your Room Page component
+// Inside your Room Page component
 useRealtime({
     channels: [roomId],
     onData: (data) => {
-        // Log this to see the structure in your console!
-        console.log("Realtime raw data:", data);
+        console.log("Realtime event:", data.event); // Debugging
 
-        // With your specific schema, the event is likely 'chat.message'
+        // In your schema, the event name is 'chat.message'
         if (data.event === "chat.message") {
-            refetch();
+            refetch(); // Trigger TanStack Query to get latest messages
         }
         
         if (data.event === "chat.destroy") {

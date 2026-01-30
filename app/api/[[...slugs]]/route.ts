@@ -29,7 +29,39 @@ const rooms = new Elysia({ prefix: "/room" })
         if (!code) return { error: 'missing_code' }
         const roomId = await redis.get(`code:${code}`)
         if (!roomId) return { error: 'invalid_or_expired_code' }
-        return { roomId }
+
+        // generate a token for the joining client and add to connected
+        const token = nanoid()
+        try {
+            let connected: any = await redis.hget(`meta:${roomId}`, 'connected')
+            if (!connected) {
+                // initialize meta if missing
+                await redis.hset(`meta:${roomId}`, {
+                    connected: JSON.stringify([token]),
+                    createdAt: Date.now(),
+                })
+            } else {
+                if (typeof connected === 'string') {
+                    try { connected = JSON.parse(connected) } catch { connected = [] }
+                }
+                const newConnected = Array.isArray(connected) ? [...connected, token] : [token]
+                await redis.hset(`meta:${roomId}`, {
+                    connected: JSON.stringify(newConnected),
+                })
+            }
+            // ensure TTL remains
+            const remaining = await redis.ttl(`meta:${roomId}`)
+            if (remaining > 0) {
+                await redis.expire(`code:${code}`, remaining)
+                await redis.expire(`meta:${roomId}`, remaining)
+            }
+        } catch (e) {
+            // ignore and continue; join should still return roomId/token
+            console.error('[join] failed updating connected list', e)
+        }
+
+        console.log('[join] returning', { roomId, token })
+        return { roomId, token }
     })
     
     // TTL endpoint — inline auth and defensive checks so dev flow doesn't 500
@@ -97,51 +129,57 @@ const rooms = new Elysia({ prefix: "/room" })
 const messages = new Elysia({ prefix: "/messages" })
     .post("/", async ({ body, query, headers }) => {
         try {
-            // inline auth extraction
+            // 1. Unified Token Extraction
             const h: any = headers
             const cookieHeader = h && (typeof h.get === 'function' ? h.get('cookie') : h['cookie']) || ''
             const cookieMatch = cookieHeader ? String(cookieHeader).match(/x-auth-token=([^;]+)/) : null
-            const headerTokenRaw = h && (typeof h.get === 'function' ? (h.get('x-auth-token') || h.get('authorization')) : (h['x-auth-token'] || h['authorization'])) || null
-            const headerToken = headerTokenRaw ? String(headerTokenRaw).replace(/^Bearer\s+/i, '') : null
-            const queryToken = (query && (query.token as string)) || null
-            const token = headerToken || (cookieMatch ? cookieMatch[1] : null) || queryToken
+            const headerToken = h && (typeof h.get === 'function' ? h.get('x-auth-token') : h['x-auth-token'])
+            const token = headerToken || (cookieMatch ? cookieMatch[1] : null)
             const roomId = (query?.roomId as string | undefined) || null
 
-            if (!roomId) return { error: 'missing_roomId' }
+            // 2. Strict Membership Check
+            if (!roomId || !token) return { error: 'unauthorized' }
 
-            let connected: any = await redis.hget(`meta:${roomId}`, 'connected')
-            if (!connected) return { error: 'room_not_found' }
-            if (typeof connected === 'string') {
-                try { connected = JSON.parse(connected) } catch { connected = [] }
+            let connectedRaw = await redis.hget(`meta:${roomId}`, 'connected')
+            let connected: string[] = []
+            
+            if (typeof connectedRaw === 'string') {
+                connected = JSON.parse(connectedRaw)
+            } else if (Array.isArray(connectedRaw)) {
+                connected = connectedRaw
             }
-            if (!Array.isArray(connected) || (token && !connected.includes(token))) return { error: 'unauthorized' }
+
+            if (!connected.includes(token)) {
+                console.error('[messages.post] Token not in connected list', { token, connected })
+                return { error: 'unauthorized' }
+            }
 
             const { sender, text } = body
-            const roomExists = await redis.exists(`meta:${roomId}`)
-            if (!roomExists) return { error: 'room_not_found' }
-
             const message = {
                 id: nanoid(),
                 sender,
                 text,
                 timestamp: Date.now(),
                 roomId,
+                token // Optional: keep for matching "YOU" in UI
             }
 
-            // store messages as JSON strings
-            await redis.rpush(`messages:${roomId}`, JSON.stringify({ ...message, token }))
-            await realtime.channel(roomId).emit("chat.message", {
-    ...message,
-    token: token || "" // Ensure this matches your message Zod object
-})
+            // 3. Single Source of Truth Storage & Emission
+            // Store as JSON string in Redis list
+            await redis.rpush(`messages:${roomId}`, JSON.stringify(message))
+            
+            // Emit via Upstash Realtime matching your 'chat.message' schema
+            await realtime.channel(roomId).emit("chat.message", message)
 
+            // 4. Maintain TTL
             const remaining = await redis.ttl(`meta:${roomId}`)
             if (remaining > 0) {
                 await redis.expire(`messages:${roomId}`, remaining)
             }
+
             return message
         } catch (e) {
-            console.error('[messages.post] error', e)
+            console.error('[messages.post] Critical Error:', e)
             return { error: 'failed_to_post_message' }
         }
     }, {

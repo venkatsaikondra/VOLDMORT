@@ -22,12 +22,31 @@ async function jsonFetch(path: string, opts: RequestInit = {}) {
 export const client = {
     room: {
         create: async () => jsonFetch('/api/room/create', { method: 'POST' }),
-        join: async (code: string) => jsonFetch('/api/room/join', { method: 'POST', body: JSON.stringify({ code }) }),
+        join: async (code: string) => {
+            const res = await jsonFetch('/api/room/join', { method: 'POST', body: JSON.stringify({ code }) })
+            try {
+                if (typeof window !== 'undefined' && res.data && 'token' in res.data) {
+                    // set cookie for x-auth-token scoped to the app
+                    document.cookie = `x-auth-token=${res.data.token}; path=/; max-age=${60*60}; samesite=strict`
+                }
+            } catch (e) {
+                // ignore cookie set failures
+            }
+            return res
+        },
         ttl: async (roomId: string) => jsonFetch(`/api/room/ttl?roomId=${encodeURIComponent(roomId)}`),
         delete: async (roomId: string) => jsonFetch(`/api/room?roomId=${encodeURIComponent(roomId)}`, { method: 'DELETE' }),
     },
     messages: {
         get: async (roomId: string) => jsonFetch(`/api/messages?roomId=${encodeURIComponent(roomId)}`),
-        post: async (roomId: string, body: any) => jsonFetch(`/api/messages?roomId=${encodeURIComponent(roomId)}`, { method: 'POST', body: JSON.stringify(body) }),
+        post: async (roomId: string, body: any) => {
+            const res = await jsonFetch(`/api/messages?roomId=${encodeURIComponent(roomId)}`, { method: 'POST', body: JSON.stringify(body) })
+            try {
+                if (typeof window !== 'undefined' && res.data && typeof res.data === 'object' && 'token' in res.data) {
+                    document.cookie = `x-auth-token=${res.data.token}; path=/; max-age=${60*60}; samesite=strict`
+                }
+            } catch (e) {}
+            return res
+        },
     },
-}
+} 

@@ -9,17 +9,14 @@ export async function proxy(req: NextRequest) {
     if (!roomMatch) return NextResponse.next()
     const roomId = roomMatch[1]
 
-    // Fetch the room metadata
+    // 1. Fetch metadata
     const meta = await redis.hgetall(`meta:${roomId}`) as { connected?: string, createdAt?: number } | null
 
     if (!meta || Object.keys(meta).length === 0) {
         return NextResponse.redirect(new URL('/?error=room-not-found', req.url))
     }
 
-    // 1. Check if user already has a token
-    const existingToken = req.cookies.get('x-auth-token')?.value
-    
-    // Parse the connected list (Always stored as JSON string in Hash)
+    // 2. Normalize connected list
     let connected: string[] = []
     try {
         connected = typeof meta.connected === 'string' ? JSON.parse(meta.connected) : []
@@ -27,23 +24,25 @@ export async function proxy(req: NextRequest) {
         connected = []
     }
 
-    // 2. If they have a token AND it's already in the list, just proceed
-    if (existingToken && connected.includes(existingToken)) {
-        return NextResponse.next()
+    // 3. Check for existing token
+    let token = req.cookies.get('x-auth-token')?.value
+
+    // 4. Identity Logic
+    if (token && connected.includes(token)) {
+        return NextResponse.next() // Known user, let them in
     }
 
-    // 3. If they have a token but it's NOT in the list, or they have no token:
     if (connected.length >= 2) {
         return NextResponse.redirect(new URL('/?error=room-full', req.url))
     }
 
-    // 4. Create new token and update list
-    const token = existingToken || nanoid()
-    const updatedConnected = Array.from(new Set([...connected, token])) // Prevent duplicates
+    // 5. New User: Assign token and save to Redis
+    token = token || nanoid()
+    const updatedConnected = Array.from(new Set([...connected, token]))
     
+    // Use hset for specific fields to avoid overwriting the whole hash
     await redis.hset(`meta:${roomId}`, {
-        connected: JSON.stringify(updatedConnected),
-        createdAt: meta.createdAt || Date.now(),
+        connected: JSON.stringify(updatedConnected)
     })
 
     const response = NextResponse.next()
