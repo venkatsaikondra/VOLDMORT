@@ -23,6 +23,9 @@ const schema = {
 export const realtime = new Realtime({
     schema,
     redis,
+    // IMPORTANT: This tells the hook which API route to hit
+    // If your route is app/api/realtime/route.ts, this should be:
+    url: "/api/realtime", 
 })
 
 export type RealtimeEvents = InferRealtimeEvents<typeof realtime>
