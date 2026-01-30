@@ -74,14 +74,23 @@ const Page = () => {
         }
     })
 
-    useRealtime({
-        channels: [roomId],
-        onData: ({ event }) => {
-            if (event === "chat.message") refetch()
-            if (event === "chat.destroy") router.push("/?destroyed=true")
-        },
-    })
+// Inside your Room Page component
+useRealtime({
+    channels: [roomId],
+    onData: (data) => {
+        // Log this to see the structure in your console!
+        console.log("Realtime raw data:", data);
 
+        // With your specific schema, the event is likely 'chat.message'
+        if (data.event === "chat.message") {
+            refetch();
+        }
+        
+        if (data.event === "chat.destroy") {
+            router.push("/?destroyed=true");
+        }
+    },
+})
     const { mutate: destroyRoom } = useMutation({
         mutationFn: async () => {
             try {
@@ -132,7 +141,7 @@ const Page = () => {
                     className="text-xs sm:text-sm bg-zinc-800 hover:bg-red-800 active:bg-red-900 px-3 py-1.5 rounded uppercase font-bold transition-all flex items-center gap-1 whitespace-nowrap shrink-0"
                 >
                     <span>💣</span>
-                    <span className="hidden sm:inline">Destroy</span>
+                    <span className="hidden sm:inline">Avada Kedavra</span>
                 </button>
             </header>
 

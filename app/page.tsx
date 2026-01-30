@@ -1,15 +1,18 @@
 "use client"
-import { useState } from "react";
+import { useState, Suspense } from "react"; // Added Suspense here
 import { useMutation } from "@tanstack/react-query";
 import { client } from "@/lib/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUsername } from "@/hooks/use-username";
-import { nanoid } from "nanoid";
 
-export default function Home() {
+// 1. Rename the internal component so it doesn't conflict with the export
+function HomeContent() {
   const { username } = useUsername()
   const router = useRouter()
+  
+  // This hook is the one that requires Suspense
   const searchParams = useSearchParams()
+  
   const [mode, setMode] = useState<'create' | 'join'>('create')
   const [joinCode, setJoinCode] = useState('')
   
@@ -59,13 +62,12 @@ export default function Home() {
         {wasDestroyed && (
           <div className="bg-red-950/20 border border-red-900/50 p-3 sm:p-4 text-center animate-pulse">
             <p className="text-red-500 text-xs sm:text-sm font-bold uppercase">Room Obliviated</p>
-            <p className="text-zinc-500 text-[10px] mt-1">THE EVIDENCE HAS BEEN PULVERIZED.</p>
+            <p className="text-zinc-500 text-[10px] mt-1">YOUR CONNECTION IS DESTROYED.</p>
           </div>
         )}
 
         <div className="border border-zinc-800 bg-zinc-900/20 p-6 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-          {/* Decorative scanner line */}
-          <div className="absolute top-0 left-0 w-full h-px bg-linear-to-r from-transparent via-violet-500 to-transparent opacity-50" />
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-50" />
           
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 sm:gap-0 border-b border-zinc-800 pb-4">
@@ -121,5 +123,14 @@ export default function Home() {
         </div>
       </div>
     </main>
+  );
+}
+
+// 2. The default export MUST wrap the hook-using component in Suspense
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black" />}>
+      <HomeContent />
+    </Suspense>
   );
 }

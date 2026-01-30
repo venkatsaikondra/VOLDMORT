@@ -130,7 +130,10 @@ const messages = new Elysia({ prefix: "/messages" })
 
             // store messages as JSON strings
             await redis.rpush(`messages:${roomId}`, JSON.stringify({ ...message, token }))
-            await realtime.channel(roomId).emit("chat.message", message)
+            await realtime.channel(roomId).emit("chat.message", {
+    ...message,
+    token: token || "" // Ensure this matches your message Zod object
+})
 
             const remaining = await redis.ttl(`meta:${roomId}`)
             if (remaining > 0) {
